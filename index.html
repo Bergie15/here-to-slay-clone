@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Here to Slay — Solo</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>">
+</head>
+<body>
+  <header>
+    <h1>Here to <span>Slay</span> <small>solo</small></h1>
+    <div class="header-controls">
+      <label>Bot speed
+        <select id="speed">
+          <option value="0.4">Fast</option>
+          <option value="1" selected>Normal</option>
+          <option value="1.8">Slow</option>
+        </select>
+      </label>
+      <button id="btn-rules">Rules</button>
+      <button id="btn-new">New game</button>
+    </div>
+  </header>
+
+  <main id="board">
+    <section id="opponents"></section>
+    <section id="center">
+      <div id="monsters-wrap">
+        <h2>Monsters</h2>
+        <div id="monsters"></div>
+      </div>
+      <div id="piles"></div>
+      <div id="log-wrap">
+        <h2>Game log</h2>
+        <ol id="log"></ol>
+      </div>
+    </section>
+    <section id="me"></section>
+  </main>
+
+  <div id="roll" class="hidden"></div>
+  <div id="modal" class="hidden"><div class="modal-box"></div></div>
+  <div id="preview" class="hidden"></div>
+  <div id="toast" class="hidden"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
