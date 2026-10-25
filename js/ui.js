@@ -1,4 +1,5 @@
 import { CLASSES, CLASS_KEYS, fmtMod } from './cards.js';
+import { probAtLeast } from './util.js';
 
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -61,6 +62,7 @@ export class UI {
     this.keys.set(key, { kind: 'monster', m });
     const act = o.act ? `data-act="${o.act}" data-mid="${m.uid}"` : '';
     return `<div class="card monster ${o.size || ''} ${o.cls || ''}" data-key="${key}" ${act}>
+      ${o.odds || ''}
       <div class="c-name">${esc(m.name)}</div>
       <div class="c-art">${m.art}</div>
       <div class="m-req">${this.reqIcons(m)}</div>
@@ -124,8 +126,13 @@ export class UI {
 
     this.$('monsters').innerHTML = g.monsters.map(m => {
       if (!m) return '<div class="card empty">No monster left</div>';
-      const ok = myTurn && me.ap >= 2 && g.meetsReq(me, m);
-      return this.monsterHTML(m, { act: 'attack', cls: ok ? 'can' : (g.meetsReq(me, m) ? '' : 'locked') });
+      const meets = g.meetsReq(me, m);
+      const ok = myTurn && me.ap >= 2 && meets;
+      const b = g.attackBonus(me);
+      const odds = meets
+        ? `<div class="m-odds" title="Your chance to slay / chance it fights back">🎯 ${Math.round(100 * probAtLeast(m.slay - b))}% · ⚠️ ${Math.round(100 * (1 - probAtLeast(m.fail + 1 - b)))}%</div>`
+        : '<div class="m-odds locked" title="Your Party doesn\'t meet the requirements">🔒 Need party</div>';
+      return this.monsterHTML(m, { act: 'attack', odds, cls: ok ? 'can' : (meets ? '' : 'locked') });
     }).join('');
 
     const top = g.discard[g.discard.length - 1];
@@ -200,6 +207,7 @@ export class UI {
     if (!r) return;
     this.awaiting = null;
     this.hidePreview();
+    this.render(this.g);
     r(action);
   }
 
@@ -402,21 +410,26 @@ export class UI {
     el.classList.add('hidden');
   }
 
-  promptModifier(state, plays) {
+  promptModifier(state, plays, g) {
     return new Promise(res => {
       const el = this.$('roll');
       el.innerHTML = this.rollHTML(state, false);
+      const want = state.spec.wants(g.human);
+      const s = state.spec;
       const seen = new Set();
       const uniq = plays.filter(x => {
-        const k = `${x.card.def.options}|${x.value}|${x.idx}`;
+        if (!x.flips) return false;
+        const k = `${x.value}|${x.idx}`;
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
       });
       const multi = state.rolls.length > 1;
       const box = el.querySelector('.roll-mods');
-      box.innerHTML = `<div class="mods-label">Play a Modifier card?</div>
-        <div class="btns">${uniq.map((x, i) => `<button data-i="${i}" class="${x.flips ? 'flip' : ''}" title="${x.flips ? 'Changes the outcome' : ''}">🧪 ${fmtMod(x.value)}${multi ? ` → ${esc(state.rolls[x.idx].player.name)}` : ''}</button>`).join('')}
+      const tone = x => (want === null ? '' : x.result === want ? 'helps' : 'hurts');
+      box.innerHTML = `<div class="mods-label">Play a Modifier card to change the outcome?</div>
+        <div class="btns">${uniq.map((x, i) => `<button data-i="${i}" class="${tone(x)}">🧪 ${fmtMod(x.value)}${multi ? ` on ${esc(state.rolls[x.idx].player.name)}` : ''}
+          <small class="outcome">→ ${esc(x.result ? s.okText : s.failText)}</small></button>`).join('')}
         <button data-pass class="primary">Pass</button></div>`;
       box.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', () => res(uniq[+b.dataset.i])));
       box.querySelector('[data-pass]').addEventListener('click', () => { box.innerHTML = ''; res(null); });

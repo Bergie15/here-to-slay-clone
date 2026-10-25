@@ -77,6 +77,7 @@ function setup() {
     ui.closeModal();
     const g = new Game({ ui, ...cfg });
     ui.log(`Welcome, ${cfg.name}! You lead ${LEADERS[leader].name}. ${g.players[g.current].name} picked last and goes first.`, 'sys');
+    window.game = g; // handy for debugging from the console
     g.run();
   });
 }

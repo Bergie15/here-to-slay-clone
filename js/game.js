@@ -1,7 +1,7 @@
 import { LEADERS, MONSTERS, PENALTIES, buildMainDeck, fmtMod } from './cards.js';
 import { EFFECTS } from './effects.js';
 import * as AI from './ai.js';
-import { d6, shuffle } from './util.js';
+import { d6, shuffle, probAtLeast } from './util.js';
 
 let UID = 1;
 const inst = def => ({ uid: UID++, def, item: null, usedTurn: -1 });
@@ -73,7 +73,7 @@ export class Game {
   }
   opponentHeroes(p) { return this.others(p).flatMap(owner => owner.party.map(hero => ({ owner, hero }))); }
   equipTargets(p, item) {
-    const owners = item.def.cursed ? this.players : [p];
+    const owners = item.def.cursed ? [...this.others(p), p] : [p];
     return owners.flatMap(owner => owner.party.filter(h => !h.item).map(hero => ({ owner, hero })));
   }
   canPlay(p, c) {
@@ -310,8 +310,10 @@ export class Game {
   async playCard(p, c, { free = false } = {}) {
     if (!free) p.ap -= 1;
     this.removeFromHand(p, c);
+    this.limbo = { card: c, target: null };
     let target = null;
     if (c.def.type === 'item') {
+      this.refresh();
       target = await this.choose(p, {
         kind: 'equip', item: c, title: `Equip ${c.def.name} to which Hero?`,
         options: this.equipTargets(p, c).map(o => ({ ...o, card: o.hero, label: `${o.owner.name}'s ${o.hero.def.name}` })),
@@ -322,19 +324,20 @@ export class Game {
     this.refresh();
     await this.pause(0.6);
     const blocked = await this.challengeWindow(p, c);
-    this.limbo = null;
-    if (blocked) { this.toDiscard(c); this.refresh(); return false; }
+    if (blocked) { this.limbo = null; this.toDiscard(c); this.refresh(); return false; }
 
     if (c.def.type === 'hero') {
+      this.limbo = null;
       p.party.push(c);
       c.item = null;
       this.refresh();
       if (this.skill(p, 'heroPlayDraw')) this.draw(p, this.skill(p, 'heroPlayDraw'));
-      if (this.canUseHero(p, c) && await this.confirm(p, `Roll to use ${c.def.name}'s effect now? (free)`, c)) {
+      if (this.canUseHero(p, c) && await this.confirm(p, `Roll to use ${c.def.name}'s effect now? Free — needs ${c.def.req}+, about ${Math.round(100 * probAtLeast(c.def.req - this.heroBonus(p, c)))}% chance.`, c)) {
         await this.useHero(p, c, { free: true });
       }
     } else if (c.def.type === 'item') {
       const h = target.hero;
+      this.limbo = null;
       if (this.ownerOf(h) && !h.item) {
         h.item = c;
       } else {
@@ -344,6 +347,7 @@ export class Game {
       if (this.skill(p, 'itemDraw')) this.draw(p, this.skill(p, 'itemDraw'));
     } else if (c.def.type === 'magic') {
       await EFFECTS[c.def.effect].run(this, p, c);
+      this.limbo = null;
       this.toDiscard(c);
       if (this.skill(p, 'magicDraw')) this.draw(p, this.skill(p, 'magicDraw'));
     }
@@ -376,7 +380,8 @@ export class Game {
         okText: `Challenge succeeds — ${c.def.name} is discarded`,
         failText: `Challenge fails — ${c.def.name} is played`,
       });
-      this.log(r.success ? `The challenge succeeds! ${c.def.name} is discarded.` : `The challenge fails. ${c.def.name} goes through.`);
+      const score = `${r.totals[0]} vs ${r.totals[1]}`;
+      this.log(r.success ? `The challenge succeeds (${score})! ${c.def.name} is discarded.` : `The challenge fails (${score}). ${c.def.name} goes through.`);
       return r.success;
     }
     return false;
@@ -397,7 +402,7 @@ export class Game {
       okText: 'Success!', failText: 'Failed',
     });
     if (r.success) {
-      this.log(`Success! ${h.def.name}: ${eff.text}`, 'good');
+      this.log(`Success (rolled ${r.totals[0]})! ${h.def.name}: ${eff.text}`, 'good');
       await eff.run(this, p, h);
     } else {
       this.log(`${p.name} fails to use ${h.def.name} (rolled ${r.totals[0]}).`);
@@ -426,12 +431,12 @@ export class Game {
       const i = this.monsters.indexOf(m);
       p.slain.push(m);
       this.monsters[i] = this.monsterDeck.shift() || null;
-      this.log(`${p.name} SLAYS ${m.name}! New skill: ${m.skillText}`, 'good');
+      this.log(`${p.name} SLAYS ${m.name} (rolled ${total})! New skill: ${m.skillText}`, 'good');
       if (this.monsters[i]) this.log(`${this.monsters[i].name} appears!`, 'sys');
       this.refresh();
       this.checkWin();
     } else if (total <= m.fail) {
-      this.log(`${m.name} fights back! ${p.name} must ${m.penaltyText}.`, 'bad');
+      this.log(`${m.name} fights back (rolled ${total})! ${p.name} must ${m.penaltyText}.`, 'bad');
       const pen = PENALTIES[m.penalty];
       if (pen.kind === 'discard') await this.forceDiscard(p, pen.n, `${m.name}: DISCARD a card`);
       else {
@@ -444,7 +449,7 @@ export class Game {
         }
       }
     } else {
-      this.log(`${m.name} survives. Nothing else happens.`);
+      this.log(`${m.name} survives (rolled ${total}). Nothing else happens.`);
     }
     this.refresh();
   }
