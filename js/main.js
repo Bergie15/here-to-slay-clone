@@ -86,7 +86,12 @@ document.getElementById('btn-rules').addEventListener('click', () => {
   if (document.getElementById('modal').classList.contains('hidden')) showRules();
 });
 document.getElementById('btn-new').addEventListener('click', () => {
-  if (confirm('Abandon this game and start a new one?')) location.reload();
+  if (!window.game) return; // the setup screen is already showing
+  if (!document.getElementById('modal').classList.contains('hidden')) return ui.toast('Finish the current choice first.');
+  const box = ui.modal(`<h3>Start a new game?</h3><p>Your current game will be lost.</p>
+    <div class="btns"><button class="danger" data-yes>New game</button><button data-no>Keep playing</button></div>`);
+  box.querySelector('[data-yes]').addEventListener('click', () => location.reload());
+  box.querySelector('[data-no]').addEventListener('click', () => ui.closeModal());
 });
 
 setup();
